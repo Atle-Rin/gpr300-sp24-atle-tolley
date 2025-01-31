@@ -2,6 +2,9 @@
 #include <math.h>
 
 #include <ew/external/glad.h>
+#include <ew/shader.h>
+#include <ew/model.h>
+#include <ew/camera.h>
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -21,9 +24,19 @@ float deltaTime;
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Model monkey = ew::Model("assets/suzanne.obj");
+
+	ew::Camera cam;
+	cam.position = glm::vec3(0.0f, 0.0f, 0.5f);
+	cam.target = glm::vec3(0.0f, 0.0f, 0.0f);
+	cam.aspectRatio = (float)screenWidth / screenHeight;
+	cam.fov = 60.0f;
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
+
+		cam.aspectRatio = (float)screenWidth / screenHeight;
 
 		float time = (float)glfwGetTime();
 		deltaTime = time - prevFrameTime;
@@ -32,6 +45,11 @@ int main() {
 		//RENDER
 		glClearColor(0.6f,0.8f,0.92f,1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		shader.use();
+		shader.setMat4("_Model", glm::mat4(1.0f));
+		shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+		monkey.draw();
 
 		drawUI();
 
