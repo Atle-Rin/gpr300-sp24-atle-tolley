@@ -27,6 +27,15 @@ float deltaTime;
 ew::Camera cam;
 ew::CameraController camCon;
 
+struct Material {
+	float Ka = 1.0;
+	float Kd = 0.5;
+	float Ks = 0.5;
+	float Shiny = 128;
+};
+
+Material material;
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -66,6 +75,10 @@ int main() {
 		shader.use();
 		shader.setMat4("_Model", monkeyTrans.modelMatrix());
 		shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+		shader.setFloat("_Material.Ka", material.Ka);
+		shader.setFloat("_Material.Kd", material.Kd);
+		shader.setFloat("_Material.Ks", material.Ks);
+		shader.setFloat("_Material.Shininess", material.Shiny);
 		monkey.draw();
 
 		drawUI();
@@ -88,11 +101,16 @@ void drawUI() {
 	ImGui::NewFrame();
 
 	ImGui::Begin("Settings");
-	ImGui::Text("Add Controls Here!");
-
 	if (ImGui::Button("Reset Camera")) {
 		resetCamera(&cam, &camCon);
 	}
+	if (ImGui::CollapsingHeader("Material")) {
+		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
+		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
+		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
+		ImGui::SliderFloat("Shininess", &material.Shiny, 2.0f, 1024.0f);
+	}
+
 
 	ImGui::End();
 
