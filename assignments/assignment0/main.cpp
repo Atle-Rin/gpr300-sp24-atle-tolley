@@ -5,6 +5,9 @@
 #include <ew/shader.h>
 #include <ew/model.h>
 #include <ew/camera.h>
+#include <ew/transform.h>
+#include <ew/cameraController.h>
+#include <ew/texture.h>
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -21,22 +24,36 @@ int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
 
+ew::Camera cam;
+ew::CameraController camCon;
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
 	ew::Model monkey = ew::Model("assets/suzanne.obj");
+	ew::Transform monkeyTrans;
+	GLuint brickTexture = ew::loadTexture("assets/ornament_color.png");
 
-	ew::Camera cam;
-	cam.position = glm::vec3(0.0f, 0.0f, 0.5f);
+	cam.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	cam.target = glm::vec3(0.0f, 0.0f, 0.0f);
 	cam.aspectRatio = (float)screenWidth / screenHeight;
 	cam.fov = 60.0f;
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK); //Back face culling
+	glEnable(GL_DEPTH_TEST); //Depth testing
+
+	glBindTextureUnit(0, brickTexture);
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
 		cam.aspectRatio = (float)screenWidth / screenHeight;
+		camCon.move(window, &cam, deltaTime);
+		shader.setVec3("_EyePos", cam.position);
+
+		monkeyTrans.rotation = glm::rotate(monkeyTrans.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 
 		float time = (float)glfwGetTime();
 		deltaTime = time - prevFrameTime;
@@ -47,7 +64,7 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		shader.use();
-		shader.setMat4("_Model", glm::mat4(1.0f));
+		shader.setMat4("_Model", monkeyTrans.modelMatrix());
 		shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
 		monkey.draw();
 
@@ -58,6 +75,13 @@ int main() {
 	printf("Shutting down...");
 }
 
+void resetCamera(ew::Camera* camera, ew::CameraController* controller)
+{
+	camera->position = glm::vec3(0, 0, 5.0f);
+	camera->target = glm::vec3(0);
+	controller->yaw = controller->pitch = 0;
+}
+
 void drawUI() {
 	ImGui_ImplGlfw_NewFrame();
 	ImGui_ImplOpenGL3_NewFrame();
@@ -65,6 +89,11 @@ void drawUI() {
 
 	ImGui::Begin("Settings");
 	ImGui::Text("Add Controls Here!");
+
+	if (ImGui::Button("Reset Camera")) {
+		resetCamera(&cam, &camCon);
+	}
+
 	ImGui::End();
 
 	ImGui::Render();
@@ -112,4 +141,3 @@ GLFWwindow* initWindow(const char* title, int width, int height) {
 
 	return window;
 }
-
