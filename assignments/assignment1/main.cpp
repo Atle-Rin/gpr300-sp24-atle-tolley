@@ -39,10 +39,11 @@ Material material;
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader sceneShader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader postShader = ew::Shader("assets/post.vert", "assets/post.frag");
 	ew::Model monkey = ew::Model("assets/suzanne.obj");
 	ew::Transform monkeyTrans;
-	GLuint brickTexture = ew::loadTexture("assets/ornament_color.png");
+	GLuint ornamentTexture = ew::loadTexture("assets/ornament_color.png");
 
 	cam.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	cam.target = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -53,14 +54,14 @@ int main() {
 	glCullFace(GL_BACK); //Back face culling
 	glEnable(GL_DEPTH_TEST); //Depth testing
 
-	glBindTextureUnit(0, brickTexture);
+	glBindTextureUnit(0, ornamentTexture);
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
 		cam.aspectRatio = (float)screenWidth / screenHeight;
 		camCon.move(window, &cam, deltaTime);
-		shader.setVec3("_EyePos", cam.position);
+		sceneShader.setVec3("_EyePos", cam.position);
 
 		monkeyTrans.rotation = glm::rotate(monkeyTrans.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 
@@ -69,17 +70,54 @@ int main() {
 		prevFrameTime = time;
 
 		//RENDER
-		glClearColor(0.6f,0.8f,0.92f,1.0f);
+		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		shader.use();
-		shader.setMat4("_Model", monkeyTrans.modelMatrix());
-		shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
-		shader.setFloat("_Material.Ka", material.Ka);
-		shader.setFloat("_Material.Kd", material.Kd);
-		shader.setFloat("_Material.Ks", material.Ks);
-		shader.setFloat("_Material.Shininess", material.Shiny);
-		monkey.draw();
+		unsigned int fbo;
+		glGenFramebuffers(1, &fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		unsigned int writeTexture;
+		glGenTextures(1, &writeTexture);
+		glBindTexture(GL_TEXTURE_2D, writeTexture);
+
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, writeTexture, 0);
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			sceneShader.use();
+			sceneShader.setMat4("_Model", monkeyTrans.modelMatrix());
+			sceneShader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+			sceneShader.setFloat("_Material.Ka", material.Ka);
+			sceneShader.setFloat("_Material.Kd", material.Kd);
+			sceneShader.setFloat("_Material.Ks", material.Ks);
+			sceneShader.setFloat("_Material.Shiny", material.Shiny);
+			monkey.draw();
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			unsigned int postVAO;
+			glCreateVertexArrays(1, &postVAO);
+
+			postShader.use();
+			glBindTextureUnit(0, writeTexture);
+			glBindVertexArray(postVAO);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glDeleteFramebuffers(1, &fbo);
+			glDeleteTextures(1, &writeTexture);
+		}
 
 		drawUI();
 
