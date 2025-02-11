@@ -23,6 +23,7 @@ int screenWidth = 1080;
 int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
+bool wireframe;
 
 ew::Camera cam;
 ew::CameraController camCon;
@@ -37,7 +38,7 @@ struct Material {
 Material material;
 
 int main() {
-	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
+	GLFWwindow* window = initWindow("Assignment 1", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	ew::Shader sceneShader = ew::Shader("assets/lit.vert", "assets/lit.frag");
 	ew::Shader postShader = ew::Shader("assets/post.vert", "assets/post.frag");
@@ -50,9 +51,65 @@ int main() {
 	cam.aspectRatio = (float)screenWidth / screenHeight;
 	cam.fov = 60.0f;
 
+	wireframe = false;
+
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK); //Back face culling
 	glEnable(GL_DEPTH_TEST); //Depth testing
+
+	unsigned int fbo;
+	glGenFramebuffers(1, &fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	unsigned int writeTexture;
+	glGenTextures(1, &writeTexture);
+	glBindTexture(GL_TEXTURE_2D, writeTexture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, writeTexture, 0);
+
+	unsigned int rbo;
+	glGenRenderbuffers(1, &rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, screenWidth, screenHeight);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+	{
+		printf("ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+		// positions   // texCoords
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		-1.0f, -1.0f,  0.0f, 0.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+		 1.0f,  1.0f,  1.0f, 1.0f
+	};
+	unsigned int quadVAO, quadVBO;
+	glGenVertexArrays(1, &quadVAO);
+	glGenBuffers(1, &quadVBO);
+	glBindVertexArray(quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
 	glBindTextureUnit(0, ornamentTexture);
 
@@ -73,51 +130,23 @@ int main() {
 		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		unsigned int fbo;
-		glGenFramebuffers(1, &fbo);
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		sceneShader.use();
+		sceneShader.setMat4("_Model", monkeyTrans.modelMatrix());
+		sceneShader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+		sceneShader.setFloat("_Material.Ka", material.Ka);
+		sceneShader.setFloat("_Material.Kd", material.Kd);
+		sceneShader.setFloat("_Material.Ks", material.Ks);
+		sceneShader.setFloat("_Material.Shiny", material.Shiny);
+		monkey.draw();
 
-		unsigned int writeTexture;
-		glGenTextures(1, &writeTexture);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		postShader.use();
+		postShader.setInt("_ColorBuffer", 0);
+		glBindVertexArray(quadVAO);
 		glBindTexture(GL_TEXTURE_2D, writeTexture);
-
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glBindTexture(GL_TEXTURE_2D, 0);
-
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, writeTexture, 0);
-
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
-		{
-			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-			sceneShader.use();
-			sceneShader.setMat4("_Model", monkeyTrans.modelMatrix());
-			sceneShader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
-			sceneShader.setFloat("_Material.Ka", material.Ka);
-			sceneShader.setFloat("_Material.Kd", material.Kd);
-			sceneShader.setFloat("_Material.Ks", material.Ks);
-			sceneShader.setFloat("_Material.Shiny", material.Shiny);
-			monkey.draw();
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			unsigned int postVAO;
-			glCreateVertexArrays(1, &postVAO);
-
-			postShader.use();
-			glBindTextureUnit(0, writeTexture);
-			glBindVertexArray(postVAO);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-			glDeleteFramebuffers(1, &fbo);
-			glDeleteTextures(1, &writeTexture);
-		}
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		drawUI();
 
@@ -148,7 +177,11 @@ void drawUI() {
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shiny, 2.0f, 1024.0f);
 	}
-
+	if (ImGui::Button("Wireframe"))
+	{
+		if (wireframe) wireframe = false;
+		else wireframe = true;
+	}
 
 	ImGui::End();
 
