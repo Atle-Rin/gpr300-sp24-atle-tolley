@@ -21,9 +21,10 @@ void drawUI();
 //Global state
 int screenWidth = 1080;
 int screenHeight = 720;
+float offsetX;
+float offsetY;
 float prevFrameTime;
 float deltaTime;
-bool wireframe;
 
 ew::Camera cam;
 ew::CameraController camCon;
@@ -50,8 +51,6 @@ int main() {
 	cam.target = glm::vec3(0.0f, 0.0f, 0.0f);
 	cam.aspectRatio = (float)screenWidth / screenHeight;
 	cam.fov = 60.0f;
-
-	wireframe = false;
 
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK); //Back face culling
@@ -117,8 +116,13 @@ int main() {
 		glfwPollEvents();
 
 		cam.aspectRatio = (float)screenWidth / screenHeight;
+		offsetX = 2.0f / screenWidth;
+		offsetY = 2.0f / screenHeight;
 		camCon.move(window, &cam, deltaTime);
 		sceneShader.setVec3("_EyePos", cam.position);
+
+		glm::vec3 xOffsets(-offsetX, 0, offsetX);
+		glm::vec3 yOffsets(-offsetY, 0, offsetY);
 
 		monkeyTrans.rotation = glm::rotate(monkeyTrans.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 
@@ -144,6 +148,8 @@ int main() {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		postShader.use();
 		postShader.setInt("_ColorBuffer", 0);
+		postShader.setVec3("_offsetX", xOffsets);
+		postShader.setVec3("_offsetY", yOffsets);
 		glBindVertexArray(quadVAO);
 		glBindTexture(GL_TEXTURE_2D, writeTexture);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -176,11 +182,6 @@ void drawUI() {
 		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shiny, 2.0f, 1024.0f);
-	}
-	if (ImGui::Button("Wireframe"))
-	{
-		if (wireframe) wireframe = false;
-		else wireframe = true;
 	}
 
 	ImGui::End();
