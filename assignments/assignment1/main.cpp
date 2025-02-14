@@ -55,6 +55,7 @@ int main() {
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK); //Back face culling
 	glEnable(GL_DEPTH_TEST); //Depth testing
+	glDepthFunc(GL_LESS);
 
 	unsigned int fbo;
 	glGenFramebuffers(1, &fbo);
@@ -74,6 +75,18 @@ int main() {
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, writeTexture, 0);
+
+	unsigned int depthTexture;
+	glGenTextures(1, &depthTexture);
+	glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
 
 	unsigned int rbo;
 	glGenRenderbuffers(1, &rbo);
@@ -152,6 +165,8 @@ int main() {
 		postShader.setVec3("_offsetY", yOffsets);
 		glBindVertexArray(quadVAO);
 		glBindTexture(GL_TEXTURE_2D, writeTexture);
+		glBindTextureUnit(1, depthTexture);
+		postShader.setInt("_DepthBuffer", 1);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		drawUI();

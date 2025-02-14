@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec2 UV;
 
 uniform sampler2D _ColorBuffer;
+uniform sampler2D _DepthBuffer;
 uniform vec3 _offsetX;
 uniform vec3 _offsetY;
 
@@ -12,9 +13,9 @@ void main(){
         vec2(_offsetX.x, _offsetY.x), // top-left
         vec2(_offsetX.y, _offsetY.x), // top-center
         vec2(_offsetX.z, _offsetY.x), // top-right
-        vec2(_offsetX.x, _offsetY.y),   // center-left
-        vec2(_offsetX.y, _offsetY.y),   // center-center
-        vec2(_offsetX.z, _offsetY.y),   // center-right
+        vec2(_offsetX.x, _offsetY.y), // center-left
+        vec2(_offsetX.y, _offsetY.y), // center-center
+        vec2(_offsetX.z, _offsetY.y), // center-right
         vec2(_offsetX.x, _offsetY.z), // bottom-left
         vec2(_offsetX.y, _offsetY.z), // bottom-center
         vec2(_offsetX.z, _offsetY.z)  // bottom-right    
@@ -33,6 +34,14 @@ void main(){
     for (int i = 0; i < 9; i++)
     {
 		color += cols[i] * kernel[i];
+    }
+    if (texture(_DepthBuffer, UV).r == 1.0)
+    {
+        bool object = false;
+        for (int i = 0; i < 9; i++)
+        {
+            if (texture(_DepthBuffer, UV + offsets[i]).r != 1.0) object = true;
+        }
     }
 	FragColor = vec4(color, 1.0);
 }
