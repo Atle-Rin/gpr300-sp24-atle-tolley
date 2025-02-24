@@ -29,6 +29,8 @@ ew::Camera cam;
 ew::CameraController camCon;
 
 ew::Camera light;
+glm::vec3 lightDir;
+unsigned int depthMap;
 
 struct Material {
 	float Ka = 1.0;
@@ -43,34 +45,70 @@ int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+	ew::Shader shadow = ew::Shader("assets/light.vert", "assets/light.frag");
 	ew::Model monkey = ew::Model("assets/suzanne.obj");
 	ew::MeshData planeData = ew::createPlane(50, 50, 1);
 	ew::Mesh plane = ew::Mesh(planeData);
+	ew::MeshData pointLightData = ew::createSphere(0.05f, 20);
+	ew::Mesh pointLight = ew::Mesh(pointLightData);
 	ew::Transform monkeyTrans;
 	ew::Transform planeTrans;
-	GLuint brickTexture = ew::loadTexture("assets/ornament_color.png");
+	ew::Transform lightTrans;
+	GLuint ornamentTexture = ew::loadTexture("assets/ornament_color.png");
 
 	cam.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	cam.target = glm::vec3(0.0f, 0.0f, 0.0f);
 	cam.aspectRatio = (float)screenWidth / screenHeight;
 	cam.fov = 60.0f;
 
-	light.position = glm::vec3(0.0f, 0.0f, 5.0f);
+	light.position = glm::vec3(-5.0f, 10.0f, -3.0f);
+	lightDir = -light.position;
 	light.target = glm::vec3(0.0f, 0.0f, 0.0f);
 	light.aspectRatio = (float)screenWidth / screenHeight;
 	light.fov = 60.0f;
+	light.orthographic = true;
+	light.orthoHeight = 10.0f;
+	
+
+	lightTrans.position = glm::vec3(-5.0f, 10.0f, -3.0f);
 
 	planeTrans.position = glm::vec3(0.0f, -10.0f, 0.0f);
 
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK); //Back face culling
 	glEnable(GL_DEPTH_TEST); //Depth testing
+	glDepthFunc(GL_LESS);
 
-	glBindTextureUnit(0, brickTexture);
+	unsigned int fbo;
+	glGenFramebuffers(1, &fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+	glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glGenTextures(1, &depthMap);
+	glBindTexture(GL_TEXTURE_2D, depthMap);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, screenWidth, screenHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glBindTextureUnit(0, ornamentTexture);
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
+		light.aspectRatio = (float)screenWidth / screenHeight;
+		light.position = -lightDir;
+		lightTrans.position = -lightDir;
+		shadow.setVec3("_EyePos", light.position);
 		cam.aspectRatio = (float)screenWidth / screenHeight;
 		camCon.move(window, &cam, deltaTime);
 		shader.setVec3("_EyePos", cam.position);
@@ -85,6 +123,23 @@ int main() {
 		glClearColor(0.6f,0.8f,0.92f,1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		shadow.use();
+		shadow.setMat4("_Model", monkeyTrans.modelMatrix());
+		shadow.setMat4("_ViewProjection", light.projectionMatrix() * light.viewMatrix());
+		shadow.setFloat("_Material.Ka", material.Ka);
+		shadow.setFloat("_Material.Kd", material.Kd);
+		shadow.setFloat("_Material.Ks", material.Ks);
+		shadow.setFloat("_Material.Shininess", material.Shiny);
+		monkey.draw();
+
+		shadow.setMat4("_Model", planeTrans.modelMatrix());
+		plane.draw();
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 		shader.use();
 		shader.setMat4("_Model", monkeyTrans.modelMatrix());
 		shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
@@ -93,8 +148,12 @@ int main() {
 		shader.setFloat("_Material.Ks", material.Ks);
 		shader.setFloat("_Material.Shininess", material.Shiny);
 		monkey.draw();
+
 		shader.setMat4("_Model", planeTrans.modelMatrix());
 		plane.draw();
+
+		shader.setMat4("_Model", lightTrans.modelMatrix());
+		pointLight.draw();
 
 		drawUI();
 
@@ -125,8 +184,23 @@ void drawUI() {
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shiny, 2.0f, 1024.0f);
 	}
+	if (ImGui::CollapsingHeader("Light Direction")) {
+		ImGui::SliderFloat("X", &lightDir.x, -10.0f, 10.0f);
+		ImGui::SliderFloat("Y", &lightDir.y, -10.0f, 10.0f);
+		ImGui::SliderFloat("Z", &lightDir.z, -10.0f, 10.0f);
+	}
 
+	ImGui::End();
 
+	ImGui::Begin("Shadow Map");
+	//Using a Child allow to fill all the space of the window.
+	ImGui::BeginChild("Shadow Map");
+	//Stretch image to be window size
+	ImVec2 windowSize = ImGui::GetWindowSize();
+	//Invert 0-1 V to flip vertically for ImGui display
+	//shadowMap is the texture2D handle
+	ImGui::Image((ImTextureID)depthMap, windowSize, ImVec2(0, 1), ImVec2(1, 0));
+	ImGui::EndChild();
 	ImGui::End();
 
 	ImGui::Render();

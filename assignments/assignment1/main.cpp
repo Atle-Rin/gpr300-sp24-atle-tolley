@@ -36,6 +36,14 @@ struct Material {
 	float Shiny = 128;
 };
 
+
+float _grayscaleR = 0.2126f;
+float _grayscaleG = 0.7152f;
+float _grayscaleB = 0.0722f;
+float _customGamma = 1.0f;
+int _customSharpen = 1;
+bool postprocessToggle = true;
+
 Material material;
 
 int main() {
@@ -75,18 +83,6 @@ int main() {
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, writeTexture, 0);
-
-	unsigned int depthTexture;
-	glGenTextures(1, &depthTexture);
-	glBindTexture(GL_TEXTURE_2D, depthTexture);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glBindTexture(GL_TEXTURE_2D, 0);
-
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
 
 	unsigned int rbo;
 	glGenRenderbuffers(1, &rbo);
@@ -147,27 +143,46 @@ int main() {
 		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		sceneShader.use();
-		sceneShader.setMat4("_Model", monkeyTrans.modelMatrix());
-		sceneShader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
-		sceneShader.setFloat("_Material.Ka", material.Ka);
-		sceneShader.setFloat("_Material.Kd", material.Kd);
-		sceneShader.setFloat("_Material.Ks", material.Ks);
-		sceneShader.setFloat("_Material.Shiny", material.Shiny);
-		monkey.draw();
+		if (postprocessToggle)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			sceneShader.use();
+			sceneShader.setMat4("_Model", monkeyTrans.modelMatrix());
+			sceneShader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+			sceneShader.setFloat("_Material.Ka", material.Ka);
+			sceneShader.setFloat("_Material.Kd", material.Kd);
+			sceneShader.setFloat("_Material.Ks", material.Ks);
+			sceneShader.setFloat("_Material.Shiny", material.Shiny);
+			monkey.draw();
 
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		postShader.use();
-		postShader.setInt("_ColorBuffer", 0);
-		postShader.setVec3("_offsetX", xOffsets);
-		postShader.setVec3("_offsetY", yOffsets);
-		glBindVertexArray(quadVAO);
-		glBindTexture(GL_TEXTURE_2D, writeTexture);
-		glBindTextureUnit(1, depthTexture);
-		postShader.setInt("_DepthBuffer", 1);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			postShader.use();
+			postShader.setInt("_ColorBuffer", 0);
+			postShader.setVec3("_offsetX", xOffsets);
+			postShader.setVec3("_offsetY", yOffsets);
+			postShader.setFloat("_grayscaleR", _grayscaleR);
+			postShader.setFloat("_grayscaleG", _grayscaleG);
+			postShader.setFloat("_grayscaleB", _grayscaleB);
+			postShader.setFloat("_customGamma", _customGamma);
+			postShader.setInt("_customSharpen", _customSharpen);
+			glBindVertexArray(quadVAO);
+			glBindTexture(GL_TEXTURE_2D, writeTexture);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+		else
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			sceneShader.use();
+			sceneShader.setMat4("_Model", monkeyTrans.modelMatrix());
+			sceneShader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+			sceneShader.setFloat("_Material.Ka", material.Ka);
+			sceneShader.setFloat("_Material.Kd", material.Kd);
+			sceneShader.setFloat("_Material.Ks", material.Ks);
+			sceneShader.setFloat("_Material.Shiny", material.Shiny);
+			monkey.draw();
+		}
 
 		drawUI();
 
@@ -197,6 +212,17 @@ void drawUI() {
 		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shiny, 2.0f, 1024.0f);
+	}
+	if (ImGui::CollapsingHeader("Grayscale")) {
+		ImGui::SliderFloat("Red Damping", &_grayscaleR, 0.0f, 1.0f);
+		ImGui::SliderFloat("Green Damping", &_grayscaleG, 0.0f, 1.0f);
+		ImGui::SliderFloat("Blue Damping", &_grayscaleB, 0.0f, 1.0f);
+	}
+	ImGui::SliderFloat("Gamma Correction", &_customGamma, 0.0f, 2.0f);
+	ImGui::SliderInt("Sharpening", &_customSharpen, 1, 10);
+	if (ImGui::Button("Toggle Postprocess")) {
+		if (postprocessToggle) postprocessToggle = false;
+		else postprocessToggle = true;
 	}
 
 	ImGui::End();
