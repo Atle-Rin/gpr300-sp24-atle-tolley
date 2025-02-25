@@ -41,11 +41,14 @@ struct Material {
 
 Material material;
 
+bool shadowToggle = true;
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
 	ew::Shader shadow = ew::Shader("assets/light.vert", "assets/light.frag");
+	ew::Shader shaded = ew::Shader("assets/shade.vert", "assets/shade.frag");
 	ew::Model monkey = ew::Model("assets/suzanne.obj");
 	ew::MeshData planeData = ew::createPlane(50, 50, 1);
 	ew::Mesh plane = ew::Mesh(planeData);
@@ -140,20 +143,44 @@ int main() {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		shader.use();
-		shader.setMat4("_Model", monkeyTrans.modelMatrix());
-		shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
-		shader.setFloat("_Material.Ka", material.Ka);
-		shader.setFloat("_Material.Kd", material.Kd);
-		shader.setFloat("_Material.Ks", material.Ks);
-		shader.setFloat("_Material.Shininess", material.Shiny);
-		monkey.draw();
+		if (shadowToggle)
+		{
+			glBindTextureUnit(1, depthMap);
+			shaded.use();
+			shaded.setMat4("_Model", monkeyTrans.modelMatrix());
+			shaded.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+			shaded.setFloat("_Material.Ka", material.Ka);
+			shaded.setFloat("_Material.Kd", material.Kd);
+			shaded.setFloat("_Material.Ks", material.Ks);
+			shaded.setFloat("_Material.Shininess", material.Shiny);
+			shaded.setMat4("_LightSpaceMatrix", light.projectionMatrix() * light.viewMatrix());
+			shaded.setInt("_ShadowMap", 1);
+			shaded.setInt("_MainTex", 0);
+			monkey.draw();
 
-		shader.setMat4("_Model", planeTrans.modelMatrix());
-		plane.draw();
+			shaded.setMat4("_Model", planeTrans.modelMatrix());
+			plane.draw();
 
-		shader.setMat4("_Model", lightTrans.modelMatrix());
-		pointLight.draw();
+			shaded.setMat4("_Model", lightTrans.modelMatrix());
+			pointLight.draw();
+		}
+		else
+		{
+			shader.use();
+			shader.setMat4("_Model", monkeyTrans.modelMatrix());
+			shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
+			shader.setFloat("_Material.Ka", material.Ka);
+			shader.setFloat("_Material.Kd", material.Kd);
+			shader.setFloat("_Material.Ks", material.Ks);
+			shader.setFloat("_Material.Shininess", material.Shiny);
+			monkey.draw();
+
+			shader.setMat4("_Model", planeTrans.modelMatrix());
+			plane.draw();
+
+			shader.setMat4("_Model", lightTrans.modelMatrix());
+			pointLight.draw();
+		}
 
 		drawUI();
 
@@ -189,6 +216,10 @@ void drawUI() {
 		ImGui::SliderFloat("Y", &lightDir.y, -10.0f, 10.0f);
 		ImGui::SliderFloat("Z", &lightDir.z, -10.0f, 10.0f);
 	}
+	if (ImGui::Button("Toggle Shadows")) {
+		if (shadowToggle) shadowToggle = false;
+		else shadowToggle = true;
+	}
 
 	ImGui::End();
 
@@ -198,7 +229,6 @@ void drawUI() {
 	//Stretch image to be window size
 	ImVec2 windowSize = ImGui::GetWindowSize();
 	//Invert 0-1 V to flip vertically for ImGui display
-	//shadowMap is the texture2D handle
 	ImGui::Image((ImTextureID)depthMap, windowSize, ImVec2(0, 1), ImVec2(1, 0));
 	ImGui::EndChild();
 	ImGui::End();
