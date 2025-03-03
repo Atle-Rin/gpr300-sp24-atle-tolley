@@ -13,6 +13,11 @@ uniform vec3 _EyePos;
 uniform vec3 _LightDirection = vec3(0.0, -1.0, 0.0);
 uniform vec3 _LightColor = vec3(1.0);
 uniform vec3 _AmbientColor = vec3(0.3,0.4,0.46);
+uniform vec3 _ShadowMapDirection;
+
+uniform float _MinBias;
+uniform float _MaxBias;
+uniform int _PCFSamplesSqrRt;
 
 struct Material{
 	float Ka;
@@ -25,9 +30,27 @@ uniform Material _Material;
 float ShadowCalculation(vec4 fragPosLightSpace) {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
 	projCoords = projCoords * 0.5 + 0.5;
-	float closestDepth = texture(_ShadowMap, projCoords.xy).r;
 	float currentDepth = projCoords.z;
-	float shadow = currentDepth > closestDepth  ? 1.0 : 0.0;
+	float bias = max(_MaxBias * (1.0 - dot(fs_in.worldNormal, _ShadowMapDirection)), _MinBias);
+	float shadow = 0.0;
+	vec2 texelSize = 1.0 / textureSize(_ShadowMap, 0);
+	if (_PCFSamplesSqrRt != 0) {
+		for (int x = -_PCFSamplesSqrRt; x <= _PCFSamplesSqrRt; ++x)
+		{
+		    for (int y = -_PCFSamplesSqrRt; y <= _PCFSamplesSqrRt; ++y)
+		    {
+				float pcfDepth = texture(_ShadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
+				shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
+			}    
+		}
+		int pcfSamples = 1 + _PCFSamplesSqrRt * 2;
+		pcfSamples *= pcfSamples;
+		shadow /= pcfSamples;
+	}
+	else {
+		float closestDepth = texture(_ShadowMap, projCoords.xy).r;
+		shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;
+	}
 	return shadow;
 }
 

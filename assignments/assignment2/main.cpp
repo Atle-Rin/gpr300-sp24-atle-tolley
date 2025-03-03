@@ -42,6 +42,9 @@ struct Material {
 Material material;
 
 bool shadowToggle = true;
+float minBias = 0.005f;
+float maxBias = 0.05f;
+int pcfSampleInt = 2;
 
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
@@ -94,8 +97,10 @@ int main() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, screenWidth, screenHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
@@ -129,6 +134,7 @@ int main() {
 		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		glClear(GL_DEPTH_BUFFER_BIT);
 
+		glCullFace(GL_FRONT);
 		shadow.use();
 		shadow.setMat4("_Model", monkeyTrans.modelMatrix());
 		shadow.setMat4("_ViewProjection", light.projectionMatrix() * light.viewMatrix());
@@ -138,10 +144,12 @@ int main() {
 		shadow.setFloat("_Material.Shininess", material.Shiny);
 		monkey.draw();
 
+		glCullFace(GL_BACK);
 		shadow.setMat4("_Model", planeTrans.modelMatrix());
 		plane.draw();
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glCullFace(GL_BACK);
 
 		if (shadowToggle)
 		{
@@ -156,6 +164,10 @@ int main() {
 			shaded.setMat4("_LightSpaceMatrix", light.projectionMatrix() * light.viewMatrix());
 			shaded.setInt("_ShadowMap", 1);
 			shaded.setInt("_MainTex", 0);
+			shaded.setVec3("_ShadowMapDirection", light.position);
+			shaded.setFloat("_MinBias", minBias);
+			shaded.setFloat("_MaxBias", maxBias);
+			shaded.setInt("_PCFSamplesSqrRt", pcfSampleInt);
 			monkey.draw();
 
 			shaded.setMat4("_Model", planeTrans.modelMatrix());
@@ -215,6 +227,11 @@ void drawUI() {
 		ImGui::SliderFloat("X", &lightDir.x, -10.0f, 10.0f);
 		ImGui::SliderFloat("Y", &lightDir.y, -10.0f, 10.0f);
 		ImGui::SliderFloat("Z", &lightDir.z, -10.0f, 10.0f);
+	}
+	if (ImGui::CollapsingHeader("Shadow Render Controls")) {
+		ImGui::SliderFloat("Min. Bias", &minBias, 0.001f, maxBias);
+		ImGui::SliderFloat("Max. Bias", &maxBias, minBias, 0.1f);
+		ImGui::SliderInt("PCF Axis Samples", &pcfSampleInt, 0, 9);
 	}
 	if (ImGui::Button("Toggle Shadows")) {
 		if (shadowToggle) shadowToggle = false;
