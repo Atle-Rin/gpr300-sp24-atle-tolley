@@ -15,6 +15,8 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include <cmath>
+
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
@@ -53,7 +55,23 @@ enum lerpType {
 	S_CURVE
 };
 
-char lerpTypes[4][11] = {"Basic", "Accelerate", "Decelerate", "S-Curve"};
+char** lerpTypes;
+
+float Lerp(float A, float B, float time, lerpType type) {
+	switch (type)
+	{
+	case BASIC:
+		return A + (B - A) * time;
+	case ACCELERATE:
+		return A + (B - A) * time * time * time;
+	case DECELERATE:
+		return A + (B - A) * (1 - std::pow(1 - time, 3));
+	case S_CURVE:
+		Lerp(Lerp(A, B, time, ACCELERATE), Lerp(A, B, time, DECELERATE), time, BASIC);
+	default:
+		break;
+	}
+}
 
 struct Frame {
 	float startTime = 0.0f;
@@ -79,7 +97,7 @@ struct Animator {
 
 Animator player;
 
-Frame* addFrame(float inValues[3], float inStart, float inLength, lerpType inType) {
+Frame* addFrame(glm::vec3 inValues, float inStart, float inLength, lerpType inType) {
 	Frame* ret = new Frame();
 	for (int i = 0; i < 3; i++) {
 		ret->values[i] = inValues[i];
@@ -102,9 +120,19 @@ int main() {
 	ew::MeshData pointLightData = ew::createSphere(0.05f, 20);
 	ew::Mesh pointLight = ew::Mesh(pointLightData);
 	ew::Transform monkeyTrans;
+	ew::Transform monkeyStartTrans;
 	ew::Transform planeTrans;
 	ew::Transform lightTrans;
 	GLuint ornamentTexture = ew::loadTexture("assets/ornament_color.png");
+
+	lerpTypes = new char* [4];
+	for (int i = 0; i < 4; i++) {
+		lerpTypes[i] = new char[11];
+	}
+	lerpTypes[0] = "Basic";
+	lerpTypes[1] = "Accelerate";
+	lerpTypes[2] = "Decelerate";
+	lerpTypes[3] = "S-Curve";
 
 	cam.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	cam.target = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -171,7 +199,63 @@ int main() {
 		camCon.move(window, &cam, deltaTime);
 		shader.setVec3("_EyePos", cam.position);
 
-		monkeyTrans.rotation = glm::rotate(monkeyTrans.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+		if (player.animations[0]->play)
+		{
+			for (int i = 0; i < player.animations[0]->frames.size(); i++)
+			{
+				if (player.animations[0]->frames[i]->startTime < player.timeExposure && player.timeExposure < (player.animations[0]->frames[i]->startTime + player.animations[0]->frames[i]->length))
+				{
+					if (i == 0) {
+						monkeyTrans.position.x = Lerp(monkeyStartTrans.position.x, player.animations[0]->frames[i]->values[0], (player.timeExposure - player.animations[0]->frames[i]->startTime) / player.animations[0]->frames[i]->length, player.animations[0]->frames[i]->type);
+						monkeyTrans.position.y = Lerp(monkeyStartTrans.position.y, player.animations[0]->frames[i]->values[1], (player.timeExposure - player.animations[0]->frames[i]->startTime) / player.animations[0]->frames[i]->length, player.animations[0]->frames[i]->type);
+						monkeyTrans.position.z = Lerp(monkeyStartTrans.position.z, player.animations[0]->frames[i]->values[2], (player.timeExposure - player.animations[0]->frames[i]->startTime) / player.animations[0]->frames[i]->length, player.animations[0]->frames[i]->type);
+					}
+					else {
+						monkeyTrans.position.x = Lerp(player.animations[0]->frames[i - 1]->values[0], player.animations[0]->frames[i]->values[0], (player.timeExposure - player.animations[0]->frames[i]->startTime) / player.animations[0]->frames[i]->length, player.animations[0]->frames[i]->type);
+						monkeyTrans.position.y = Lerp(player.animations[0]->frames[i - 1]->values[1], player.animations[0]->frames[i]->values[1], (player.timeExposure - player.animations[0]->frames[i]->startTime) / player.animations[0]->frames[i]->length, player.animations[0]->frames[i]->type);
+						monkeyTrans.position.z = Lerp(player.animations[0]->frames[i - 1]->values[2], player.animations[0]->frames[i]->values[2], (player.timeExposure - player.animations[0]->frames[i]->startTime) / player.animations[0]->frames[i]->length, player.animations[0]->frames[i]->type);
+					}
+				}
+			}
+		}
+		if (player.animations[1]->play)
+		{
+			for (int i = 0; i < player.animations[1]->frames.size(); i++)
+			{
+				if (player.animations[1]->frames[i]->startTime < player.timeExposure && player.timeExposure < (player.animations[1]->frames[i]->startTime + player.animations[1]->frames[i]->length))
+				{
+					if (i == 0) {
+						monkeyTrans.rotation.x = Lerp(monkeyStartTrans.rotation.x, player.animations[1]->frames[i]->values[0], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+						monkeyTrans.rotation.y = Lerp(monkeyStartTrans.rotation.y, player.animations[1]->frames[i]->values[1], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+						monkeyTrans.rotation.z = Lerp(monkeyStartTrans.rotation.z, player.animations[1]->frames[i]->values[2], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+					}
+					else {
+						monkeyTrans.rotation.x = Lerp(player.animations[1]->frames[i - 1]->values[0], player.animations[1]->frames[i]->values[0], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+						monkeyTrans.rotation.y = Lerp(player.animations[1]->frames[i - 1]->values[1], player.animations[1]->frames[i]->values[1], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+						monkeyTrans.rotation.z = Lerp(player.animations[1]->frames[i - 1]->values[2], player.animations[1]->frames[i]->values[2], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+					}
+				}
+			}
+		}
+		if (player.animations[2]->play)
+		{
+			for (int i = 0; i < player.animations[2]->frames.size(); i++)
+			{
+				if (player.animations[2]->frames[i]->startTime < player.timeExposure && player.timeExposure < (player.animations[2]->frames[i]->startTime + player.animations[2]->frames[i]->length))
+				{
+					if (i == 0) {
+						monkeyTrans.scale.x = Lerp(monkeyStartTrans.scale.x, player.animations[2]->frames[i]->values[0], (player.timeExposure - player.animations[2]->frames[i]->startTime) / player.animations[2]->frames[i]->length, player.animations[2]->frames[i]->type);
+						monkeyTrans.scale.y = Lerp(monkeyStartTrans.scale.y, player.animations[2]->frames[i]->values[1], (player.timeExposure - player.animations[2]->frames[i]->startTime) / player.animations[2]->frames[i]->length, player.animations[2]->frames[i]->type);
+						monkeyTrans.scale.z = Lerp(monkeyStartTrans.scale.z, player.animations[2]->frames[i]->values[2], (player.timeExposure - player.animations[2]->frames[i]->startTime) / player.animations[2]->frames[i]->length, player.animations[2]->frames[i]->type);
+					}
+					else {
+						monkeyTrans.scale.x = Lerp(player.animations[2]->frames[i - 1]->values[0], player.animations[2]->frames[i]->values[0], (player.timeExposure - player.animations[2]->frames[i]->startTime) / player.animations[2]->frames[i]->length, player.animations[2]->frames[i]->type);
+						monkeyTrans.scale.y = Lerp(player.animations[2]->frames[i - 1]->values[1], player.animations[2]->frames[i]->values[1], (player.timeExposure - player.animations[2]->frames[i]->startTime) / player.animations[2]->frames[i]->length, player.animations[2]->frames[i]->type);
+						monkeyTrans.scale.z = Lerp(player.animations[2]->frames[i - 1]->values[2], player.animations[2]->frames[i]->values[2], (player.timeExposure - player.animations[2]->frames[i]->startTime) / player.animations[2]->frames[i]->length, player.animations[2]->frames[i]->type);
+					}
+				}
+			}
+		}
 
 		float time = (float)glfwGetTime();
 		deltaTime = time - prevFrameTime;
@@ -246,6 +330,24 @@ int main() {
 
 		drawUI();
 
+		float bigTotal = 0.0f;
+		for (int i = 0; i < 3; i++)
+		{
+			float total = 0.0f;
+			for (int j = 0; j < player.animations[i]->frames.size(); j++)
+			{
+				total += player.animations[i]->frames[j]->length;
+			}
+			player.animations[i]->duration = total;
+			bigTotal += total;
+		}
+		player.timeLimit = bigTotal;
+		player.timeExposure += deltaTime * player.timeSpeed;
+		if (player.timeExposure > player.timeLimit && player.loop)
+		{
+			player.timeExposure = 0.0f;
+		}
+
 		glfwSwapBuffers(window);
 	}
 	printf("Shutting down...");
@@ -288,41 +390,82 @@ void drawUI() {
 		else shadowToggle = true;
 	}
 	if (ImGui::CollapsingHeader("Animation Controls")) {
-		ImGui::DragFloat("Total Length", &player.timeLimit, 0.0f, 240.0f);
+		ImGui::DragFloat("Total Length (Visibility, Not Editable)", &player.timeLimit, 0.0f, 240.0f);
 		ImGui::SliderFloat("Timer", &player.timeExposure, 0.0f, player.timeLimit);
 		ImGui::DragFloat("Playback Speed", &player.timeSpeed, -5.0f, 5.0f);
+		if (ImGui::Button("Toggle Looping"))
+		{
+			if (player.loop) player.loop = false;
+			else player.loop = true;
+		}
 	}
 	if (ImGui::CollapsingHeader("Transform")) {
 		for (int i = 0; i < player.animations[0]->frames.size(); i++) {
-			ImGui::SliderFloat("Start", &player.animations[0]->frames[i]->startTime, player.animations[0]->startTime, player.animations[0]->duration);
-			ImGui::DragFloat3("Values", player.animations[0]->frames[i]->values, 1.0f, -5.0f, 5.0f);
-			int lerpChange = player.animations[0]->frames[i]->type;
-			ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
-			player.animations[0]->frames[i]->type = (lerpType)lerpChange;
+			std::string headerName = "Frame " + std::to_string(i);
+			if (ImGui::CollapsingHeader(headerName.c_str())) {
+				ImGui::SliderFloat("Start", &player.animations[0]->frames[i]->startTime, player.animations[0]->startTime, player.timeLimit);
+				ImGui::DragFloat3("Values", player.animations[0]->frames[i]->values, 0.25f, -5.0f, 5.0f);
+				ImGui::DragFloat("Length", &player.animations[0]->frames[i]->length, 0.1f, 0.1f, 3.0f);
+				int lerpChange = player.animations[0]->frames[i]->type;
+				ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
+				player.animations[0]->frames[i]->type = (lerpType)lerpChange;
+			}
 		}
 		if (ImGui::Button("Toggle Play")) {
 			if (player.animations[0]->play) player.animations[0]->play = false;
 			else player.animations[0]->play = true;
+		}
+		if (ImGui::Button("Add Keyframe")) {
+			player.animations[0]->frames.push_back(addFrame(glm::vec3(0.0f), 0.0f, 1.0f, BASIC));
+		}
+		if (ImGui::Button("Remove Keyframe")) {
+			player.animations[0]->frames.pop_back();
 		}
 	}
 	if (ImGui::CollapsingHeader("Rotate")) {
-		for (int i = 0; i < player.animations[0]->frames.size(); i++) {
-			ImGui::SliderFloat("Start", &player.animations[0]->frames[i]->startTime, player.animations[0]->startTime, player.animations[0]->duration);
-			ImGui::DragFloat3("Values", player.animations[0]->frames[i]->values, 1.0f, -5.0f, 5.0f);
+		for (int i = 0; i < player.animations[1]->frames.size(); i++) {
+			std::string headerName = "Frame " + std::to_string(i);
+			if (ImGui::CollapsingHeader(headerName.c_str())) {
+				ImGui::SliderFloat("Start", &player.animations[1]->frames[i]->startTime, player.animations[1]->startTime, player.timeLimit);
+				ImGui::DragFloat3("Values", player.animations[1]->frames[i]->values, 0.25f, -5.0f, 5.0f);
+				ImGui::DragFloat("Length", &player.animations[1]->frames[i]->length, 0.1f, 0.1f, 3.0f);
+				int lerpChange = player.animations[1]->frames[i]->type;
+				ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
+				player.animations[1]->frames[i]->type = (lerpType)lerpChange;
+			}
 		}
 		if (ImGui::Button("Toggle Play")) {
-			if (player.animations[0]->play) player.animations[0]->play = false;
-			else player.animations[0]->play = true;
+			if (player.animations[1]->play) player.animations[1]->play = false;
+			else player.animations[1]->play = true;
+		}
+		if (ImGui::Button("Add Keyframe")) {
+			player.animations[1]->frames.push_back(addFrame(glm::vec3(0.0f), 0.0f, 1.0f, BASIC));
+		}
+		if (ImGui::Button("Remove Keyframe")) {
+			player.animations[1]->frames.pop_back();
 		}
 	}
 	if (ImGui::CollapsingHeader("Scale")) {
-		for (int i = 0; i < player.animations[0]->frames.size(); i++) {
-			ImGui::SliderFloat("Start", &player.animations[0]->frames[i]->startTime, player.animations[0]->startTime, player.animations[0]->duration);
-			ImGui::DragFloat3("Values", player.animations[0]->frames[i]->values, 1.0f, -5.0f, 5.0f);
+		for (int i = 0; i < player.animations[2]->frames.size(); i++) {
+			std::string headerName = "Frame " + std::to_string(i);
+			if (ImGui::CollapsingHeader(headerName.c_str())) {
+				ImGui::SliderFloat("Start", &player.animations[2]->frames[i]->startTime, player.animations[2]->startTime, player.timeLimit);
+				ImGui::DragFloat3("Values", player.animations[2]->frames[i]->values, 0.25f, -5.0f, 5.0f);
+				ImGui::DragFloat("Length", &player.animations[2]->frames[i]->length, 0.1f, 0.1f, 3.0f);
+				int lerpChange = player.animations[2]->frames[i]->type;
+				ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
+				player.animations[2]->frames[i]->type = (lerpType)lerpChange;
+			}
 		}
 		if (ImGui::Button("Toggle Play")) {
-			if (player.animations[0]->play) player.animations[0]->play = false;
-			else player.animations[0]->play = true;
+			if (player.animations[2]->play) player.animations[2]->play = false;
+			else player.animations[2]->play = true;
+		}
+		if (ImGui::Button("Add Keyframe")) {
+			player.animations[2]->frames.push_back(addFrame(glm::vec3(0.0f), 0.0f, 1.0f, BASIC));
+		}
+		if (ImGui::Button("Remove Keyframe")) {
+			player.animations[2]->frames.pop_back();
 		}
 	}
 
