@@ -434,6 +434,26 @@ int main() {
 		if (player.timeExposure > player.timeLimit && player.loop)
 		{
 			player.timeExposure = 0.0f;
+			monkeyTrans = monkeyStartTrans;
+		}
+		if (player.timeExposure < 0.0f && player.loop)
+		{
+			player.timeExposure = player.timeLimit;
+			for (int i = 0; i < 3; i++)
+			{
+				if (!player.animations[0]->frames.empty())
+				{
+					monkeyTrans.position[i] = player.animations[0]->frames.back()->values[i];
+				}
+				if (!player.animations[2]->frames.empty())
+				{
+					monkeyTrans.scale[i] = player.animations[2]->frames.back()->values[i];
+				}
+			}
+			if (!player.animations[1]->frames.empty())
+			{
+				monkeyTrans.rotation = EulToQuat(player.animations[1]->frames.back()->values);
+			}
 		}
 
 		glfwSwapBuffers(window);
@@ -544,7 +564,7 @@ void drawUI() {
 	if (ImGui::CollapsingHeader("Scale")) {
 		for (int i = 0; i < player.animations[2]->frames.size(); i++) {
 			std::string header = std::string("Frame " + std::to_string(i));
-			if (ImGui::CollapsingHeader(std::string("Frame " + i).c_str())) {
+			if (ImGui::CollapsingHeader(header.c_str())) {
 				std::string start = std::string(std::to_string(i) + ": Start");
 				std::string vals = std::string(std::to_string(i) + ": Values");
 				std::string length = std::string(std::to_string(i) + ": Length");
