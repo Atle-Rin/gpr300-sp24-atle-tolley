@@ -73,6 +73,96 @@ float Lerp(float A, float B, float time, lerpType type) {
 	}
 }
 
+glm::quat SLerp(glm::quat A, glm::quat B, float time, lerpType type) {
+
+	glm::quat An = glm::normalize(A);
+	glm::quat Bn = glm::normalize(B);
+
+	float dot = glm::dot(An, Bn);
+
+	if (dot > 1.0f) dot = 1.0f;
+	if (dot < 1.0f) dot = 1.0f;
+
+	float angle = glm::acos(dot);
+	float sinAng = glm::sin(angle);
+
+	bool lerp = false;
+	if (sinAng < 0.0001f) {
+		lerp = true;
+	}
+
+	switch (type)
+	{
+	case BASIC:
+		if (lerp) {
+			glm::quat ret = An + (Bn - An) * time;
+			return glm::normalize(ret);
+		}
+		else {
+			float tI = glm::sin((1.0f - time) * angle) / sinAng;
+			float tN = glm::sin(time * angle) / sinAng;
+			glm::quat ret = tI * An + tN * Bn;
+			return glm::normalize(ret);
+		}
+	case ACCELERATE:
+		if (lerp) {
+			glm::quat ret = An + (Bn - An) * time * time * time;
+			return glm::normalize(ret);
+		}
+		else {
+			float tI = glm::sin(std::pow(1.0f - time, 3) * angle) / sinAng;
+			float tN = glm::sin(time * time * time * angle) / sinAng;
+			glm::quat ret = tI * An + tN * Bn;
+			return glm::normalize(ret);
+		}
+	case DECELERATE:
+		if (lerp) {
+			float power = (1 - std::pow(1 - time, 3));
+			glm::quat ret = An + (Bn - An) * power;
+			return glm::normalize(ret);
+		}
+		else {
+			float tI = glm::sin(std::pow(1 - time, 3) * angle) / sinAng;
+			float tN = glm::sin((1 - std::pow(1 - time, 3)) * angle) / sinAng;
+			glm::quat ret = tI * An + tN * Bn;
+			return glm::normalize(ret);
+		}
+	case S_CURVE:
+		if (lerp) {
+			glm::quat ret = {
+				Lerp(Lerp(An.w, Bn.w, time, ACCELERATE), Lerp(An.w, Bn.w, time, DECELERATE), time, BASIC),
+				Lerp(Lerp(An.x, Bn.x, time, ACCELERATE), Lerp(An.x, Bn.x, time, DECELERATE), time, BASIC),
+				Lerp(Lerp(An.y, Bn.y, time, ACCELERATE), Lerp(An.y, Bn.y, time, DECELERATE), time, BASIC),
+				Lerp(Lerp(An.z, Bn.z, time, ACCELERATE), Lerp(An.z, Bn.z, time, DECELERATE), time, BASIC),
+			};
+			return glm::normalize(ret);
+		}
+		else {
+			glm::quat ret = SLerp(SLerp(A, B, time, ACCELERATE), SLerp(A, B, time, DECELERATE), time, BASIC);
+			return glm::normalize(ret);
+		}
+	default:
+		break;
+	}
+}
+
+glm::quat EulToQuat(float eul[]) {
+	double cr = cos(eul[0] * 0.5);
+	double sr = sin(eul[0] * 0.5);
+	double cp = cos(eul[1] * 0.5);
+	double sp = sin(eul[1] * 0.5);
+	double cy = cos(eul[2] * 0.5);
+	double sy = sin(eul[2] * 0.5);
+
+	glm::quat q;
+	q.w = cr * cp * cy + sr * sp * sy;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+
+	return q;
+}
+
 struct Frame {
 	float startTime = 0.0f;
 	float length = 1.0f;
@@ -224,15 +314,13 @@ int main() {
 			{
 				if (player.animations[1]->frames[i]->startTime < player.timeExposure && player.timeExposure < (player.animations[1]->frames[i]->startTime + player.animations[1]->frames[i]->length))
 				{
+					glm::quat rotation = EulToQuat(player.animations[1]->frames[i]->values);
 					if (i == 0) {
-						monkeyTrans.rotation.x = Lerp(monkeyStartTrans.rotation.x, player.animations[1]->frames[i]->values[0], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
-						monkeyTrans.rotation.y = Lerp(monkeyStartTrans.rotation.y, player.animations[1]->frames[i]->values[1], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
-						monkeyTrans.rotation.z = Lerp(monkeyStartTrans.rotation.z, player.animations[1]->frames[i]->values[2], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+						monkeyTrans.rotation = SLerp(monkeyStartTrans.rotation, rotation, (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
 					}
 					else {
-						monkeyTrans.rotation.x = Lerp(player.animations[1]->frames[i - 1]->values[0], player.animations[1]->frames[i]->values[0], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
-						monkeyTrans.rotation.y = Lerp(player.animations[1]->frames[i - 1]->values[1], player.animations[1]->frames[i]->values[1], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
-						monkeyTrans.rotation.z = Lerp(player.animations[1]->frames[i - 1]->values[2], player.animations[1]->frames[i]->values[2], (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
+						glm::quat rotationOld = EulToQuat(player.animations[1]->frames[i - 1]->values);
+						monkeyTrans.rotation = SLerp(rotationOld, rotation, (player.timeExposure - player.animations[1]->frames[i]->startTime) / player.animations[1]->frames[i]->length, player.animations[1]->frames[i]->type);
 					}
 				}
 			}
@@ -401,13 +489,17 @@ void drawUI() {
 	}
 	if (ImGui::CollapsingHeader("Transform")) {
 		for (int i = 0; i < player.animations[0]->frames.size(); i++) {
-			std::string headerName = "Frame " + std::to_string(i);
-			if (ImGui::CollapsingHeader(headerName.c_str())) {
-				ImGui::SliderFloat("Start", &player.animations[0]->frames[i]->startTime, player.animations[0]->startTime, player.timeLimit);
-				ImGui::DragFloat3("Values", player.animations[0]->frames[i]->values, 0.25f, -5.0f, 5.0f);
-				ImGui::DragFloat("Length", &player.animations[0]->frames[i]->length, 0.1f, 0.1f, 3.0f);
+			std::string header = std::string("Frame " + std::to_string(i));
+			if (ImGui::CollapsingHeader(header.c_str())) {
+				std::string start = std::string(std::to_string(i) + ": Start");
+				std::string vals = std::string(std::to_string(i) + ": Values");
+				std::string length = std::string(std::to_string(i) + ": Length");
+				std::string ease = std::string(std::to_string(i) + ": Easing");
+				ImGui::SliderFloat(start.c_str(), &player.animations[0]->frames[i]->startTime, player.animations[0]->startTime, player.timeLimit);
+				ImGui::DragFloat3(vals.c_str(), player.animations[0]->frames[i]->values, 0.25f, -5.0f, 5.0f);
+				ImGui::DragFloat(length.c_str(), &player.animations[0]->frames[i]->length, 0.1f, 0.1f, 3.0f);
 				int lerpChange = player.animations[0]->frames[i]->type;
-				ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
+				ImGui::ListBox(ease.c_str(), &lerpChange, lerpTypes, 4);
 				player.animations[0]->frames[i]->type = (lerpType)lerpChange;
 			}
 		}
@@ -424,13 +516,17 @@ void drawUI() {
 	}
 	if (ImGui::CollapsingHeader("Rotate")) {
 		for (int i = 0; i < player.animations[1]->frames.size(); i++) {
-			std::string headerName = "Frame " + std::to_string(i);
-			if (ImGui::CollapsingHeader(headerName.c_str())) {
-				ImGui::SliderFloat("Start", &player.animations[1]->frames[i]->startTime, player.animations[1]->startTime, player.timeLimit);
-				ImGui::DragFloat3("Values", player.animations[1]->frames[i]->values, 0.25f, -5.0f, 5.0f);
-				ImGui::DragFloat("Length", &player.animations[1]->frames[i]->length, 0.1f, 0.1f, 3.0f);
+			std::string header = std::string("Frame " + std::to_string(i));
+			if (ImGui::CollapsingHeader(header.c_str())) {
+				std::string start = std::string(std::to_string(i) + ": Start");
+				std::string vals = std::string(std::to_string(i) + ": Values");
+				std::string length = std::string(std::to_string(i) + ": Length");
+				std::string ease = std::string(std::to_string(i) + ": Easing");
+				ImGui::SliderFloat(start.c_str(), &player.animations[1]->frames[i]->startTime, player.animations[1]->startTime, player.timeLimit);
+				ImGui::DragFloat3(vals.c_str(), player.animations[1]->frames[i]->values, 0.25f, -5.0f, 5.0f);
+				ImGui::DragFloat(length.c_str(), &player.animations[1]->frames[i]->length, 0.1f, 0.1f, 3.0f);
 				int lerpChange = player.animations[1]->frames[i]->type;
-				ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
+				ImGui::ListBox(ease.c_str(), &lerpChange, lerpTypes, 4);
 				player.animations[1]->frames[i]->type = (lerpType)lerpChange;
 			}
 		}
@@ -447,13 +543,17 @@ void drawUI() {
 	}
 	if (ImGui::CollapsingHeader("Scale")) {
 		for (int i = 0; i < player.animations[2]->frames.size(); i++) {
-			std::string headerName = "Frame " + std::to_string(i);
-			if (ImGui::CollapsingHeader(headerName.c_str())) {
-				ImGui::SliderFloat("Start", &player.animations[2]->frames[i]->startTime, player.animations[2]->startTime, player.timeLimit);
-				ImGui::DragFloat3("Values", player.animations[2]->frames[i]->values, 0.25f, -5.0f, 5.0f);
-				ImGui::DragFloat("Length", &player.animations[2]->frames[i]->length, 0.1f, 0.1f, 3.0f);
+			std::string header = std::string("Frame " + std::to_string(i));
+			if (ImGui::CollapsingHeader(std::string("Frame " + i).c_str())) {
+				std::string start = std::string(std::to_string(i) + ": Start");
+				std::string vals = std::string(std::to_string(i) + ": Values");
+				std::string length = std::string(std::to_string(i) + ": Length");
+				std::string ease = std::string(std::to_string(i) + ": Easing");
+				ImGui::SliderFloat(start.c_str(), &player.animations[2]->frames[i]->startTime, player.animations[2]->startTime, player.timeLimit);
+				ImGui::DragFloat3(vals.c_str(), player.animations[2]->frames[i]->values, 0.25f, -5.0f, 5.0f);
+				ImGui::DragFloat(length.c_str(), &player.animations[2]->frames[i]->length, 0.1f, 0.1f, 3.0f);
 				int lerpChange = player.animations[2]->frames[i]->type;
-				ImGui::ListBox("Easing", &lerpChange, lerpTypes, 4);
+				ImGui::ListBox(ease.c_str(), &lerpChange, lerpTypes, 4);
 				player.animations[2]->frames[i]->type = (lerpType)lerpChange;
 			}
 		}
@@ -462,7 +562,7 @@ void drawUI() {
 			else player.animations[2]->play = true;
 		}
 		if (ImGui::Button("Add Keyframe")) {
-			player.animations[2]->frames.push_back(addFrame(glm::vec3(0.0f), 0.0f, 1.0f, BASIC));
+			player.animations[2]->frames.push_back(addFrame(glm::vec3(1.0f), 0.0f, 1.0f, BASIC));
 		}
 		if (ImGui::Button("Remove Keyframe")) {
 			player.animations[2]->frames.pop_back();
