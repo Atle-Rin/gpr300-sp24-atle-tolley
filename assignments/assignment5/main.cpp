@@ -46,6 +46,12 @@ float minBias = 0.005f;
 float maxBias = 0.05f;
 int pcfSampleInt = 2;
 
+float Lerp(float A, float B, float time) {
+	return A + (B - A) * time;
+}
+
+
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -57,9 +63,11 @@ int main() {
 	ew::Mesh plane = ew::Mesh(planeData);
 	ew::MeshData pointLightData = ew::createSphere(0.05f, 20);
 	ew::Mesh pointLight = ew::Mesh(pointLightData);
+	ew::MeshData splinePoint = ew::createSphere(0.1f, 20);
 	ew::Transform monkeyTrans;
 	ew::Transform planeTrans;
 	ew::Transform lightTrans;
+	ew::Transform pointsTrans;
 	GLuint ornamentTexture = ew::loadTexture("assets/ornament_color.png");
 
 	cam.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -192,6 +200,8 @@ int main() {
 
 			shader.setMat4("_Model", lightTrans.modelMatrix());
 			pointLight.draw();
+
+			for (int i = 0; i < )
 		}
 
 		drawUI();
