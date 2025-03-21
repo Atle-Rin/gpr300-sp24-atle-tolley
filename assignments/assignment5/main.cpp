@@ -50,7 +50,17 @@ float Lerp(float A, float B, float time) {
 	return A + (B - A) * time;
 }
 
+struct Point {
+	glm::vec3 pos;
+	glm::quat rot;
+};
 
+struct Spline {
+	Point controls[4];
+
+};
+
+std::vector<Spline> splines;
 
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
@@ -63,7 +73,8 @@ int main() {
 	ew::Mesh plane = ew::Mesh(planeData);
 	ew::MeshData pointLightData = ew::createSphere(0.05f, 20);
 	ew::Mesh pointLight = ew::Mesh(pointLightData);
-	ew::MeshData splinePoint = ew::createSphere(0.1f, 20);
+	ew::MeshData splinePointData = ew::createSphere(0.1f, 20);
+	ew::Mesh splinePoint = ew::Mesh(splinePointData);
 	ew::Transform monkeyTrans;
 	ew::Transform planeTrans;
 	ew::Transform lightTrans;
@@ -118,6 +129,11 @@ int main() {
 
 	glBindTextureUnit(0, ornamentTexture);
 
+	splines.push_back(Spline());
+	splines[0].controls[1].pos = glm::vec3(1.0f);
+	splines[0].controls[2].pos = glm::vec3(2.0f, -2.0f, 0.0f);
+	splines[0].controls[3].pos = glm::vec3(3.0f);
+
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
@@ -156,6 +172,21 @@ int main() {
 		shadow.setMat4("_Model", planeTrans.modelMatrix());
 		plane.draw();
 
+		pointsTrans.position = splines[0].controls[0].pos;
+		shadow.setMat4("_Model", pointsTrans.modelMatrix());
+		splinePoint.draw();
+		for (int i = 0; i < splines.size(); i++) {
+			pointsTrans.position = splines[i].controls[1].pos;
+			shadow.setMat4("_Model", pointsTrans.modelMatrix());
+			pointLight.draw();
+			pointsTrans.position = splines[i].controls[2].pos;
+			shadow.setMat4("_Model", pointsTrans.modelMatrix());
+			pointLight.draw();
+			pointsTrans.position = splines[i].controls[3].pos;
+			shadow.setMat4("_Model", pointsTrans.modelMatrix());
+			splinePoint.draw();
+		}
+
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glCullFace(GL_BACK);
 
@@ -183,6 +214,21 @@ int main() {
 
 			shaded.setMat4("_Model", lightTrans.modelMatrix());
 			pointLight.draw();
+
+			pointsTrans.position = splines[0].controls[0].pos;
+			shaded.setMat4("_Model", pointsTrans.modelMatrix());
+			splinePoint.draw();
+			for (int i = 0; i < splines.size(); i++) {
+				pointsTrans.position = splines[i].controls[1].pos;
+				shaded.setMat4("_Model", pointsTrans.modelMatrix());
+				pointLight.draw();
+				pointsTrans.position = splines[i].controls[2].pos;
+				shaded.setMat4("_Model", pointsTrans.modelMatrix());
+				pointLight.draw();
+				pointsTrans.position = splines[i].controls[3].pos;
+				shaded.setMat4("_Model", pointsTrans.modelMatrix());
+				splinePoint.draw();
+			}
 		}
 		else
 		{
@@ -201,7 +247,20 @@ int main() {
 			shader.setMat4("_Model", lightTrans.modelMatrix());
 			pointLight.draw();
 
-			for (int i = 0; i < )
+			pointsTrans.position = splines[0].controls[0].pos;
+			shader.setMat4("_Model", pointsTrans.modelMatrix());
+			splinePoint.draw();
+			for (int i = 0; i < splines.size(); i++) {
+				pointsTrans.position = splines[i].controls[1].pos;
+				shader.setMat4("_Model", pointsTrans.modelMatrix());
+				pointLight.draw();
+				pointsTrans.position = splines[i].controls[2].pos;
+				shader.setMat4("_Model", pointsTrans.modelMatrix());
+				pointLight.draw();
+				pointsTrans.position = splines[i].controls[3].pos;
+				shader.setMat4("_Model", pointsTrans.modelMatrix());
+				splinePoint.draw();
+			}
 		}
 
 		drawUI();
