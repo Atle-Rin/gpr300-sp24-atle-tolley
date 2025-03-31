@@ -46,6 +46,55 @@ float minBias = 0.005f;
 float maxBias = 0.05f;
 int pcfSampleInt = 2;
 
+glm::vec3 VecFy(float right[]) {
+	glm::vec3 ret;
+	for (int i = 0; i < 3; i++) {
+		ret[i] = right[i];
+	}
+	return ret;
+}
+
+glm::quat EulToQuat(float eul[]) {
+	double cr = cos(eul[0] * 0.5);
+	double sr = sin(eul[0] * 0.5);
+	double cp = cos(eul[1] * 0.5);
+	double sp = sin(eul[1] * 0.5);
+	double cy = cos(eul[2] * 0.5);
+	double sy = sin(eul[2] * 0.5);
+
+	glm::quat q;
+	q.w = cr * cp * cy + sr * sp * sy;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+
+	return q;
+}
+
+//This code is a slightly reformatted version of a function written at https://gamedev.stackexchange.com/questions/28395/rotating-vector3-by-a-quaternion
+//Credit to stackoverflow.com user Laurent Couvidou, who has saved me a lot of time making this happen.
+glm::vec3 RotateVec3(glm::vec3 input, glm::quat rotate) {
+	glm::vec3 ret;
+
+	// Extract the vector part of the quaternion
+	glm::quat rotNorm = glm::normalize(rotate);
+	glm::vec3 rotVec = glm::vec3(rotNorm.x, rotNorm.y, rotNorm.z);
+
+	// Extract the scalar part of the quaternion
+	float s = rotate.w;
+
+	// Do the math
+	ret = 2.0f * glm::dot(rotVec, input) * rotVec + (s * s - glm::dot(rotVec, rotVec)) * input + 2.0f * s * glm::cross(rotVec, input);
+
+	return ret;
+}
+
+struct ExposureTransform {
+	float pos[3];
+	float rot[3];
+	float sca[3];
+};
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
