@@ -32,6 +32,8 @@ ew::Camera light;
 glm::vec3 lightDir;
 unsigned int depthMap;
 
+float timeExposure = 0.0f;
+
 struct Material {
 	float Ka = 1.0;
 	float Kd = 0.5;
@@ -46,21 +48,217 @@ float minBias = 0.005f;
 float maxBias = 0.05f;
 int pcfSampleInt = 2;
 
-float Lerp(float A, float B, float time) {
-	return A + (B - A) * time;
-}
-
 struct Point {
-	glm::vec3 pos;
-	glm::quat rot;
+	float pos[3];
+	float rot[3];
+	float sca[3] = { 1.0f, 1.0f, 1.0f };
 };
 
 struct Spline {
 	Point controls[4];
-
+	float startSize = 1.0f;
+	float endSize = 1.0f;
 };
 
-std::vector<Spline> splines;
+std::vector<Spline*> splines;
+
+glm::vec3 VecFy(float right[]) {
+	glm::vec3 ret;
+	for (int i = 0; i < 3; i++) {
+		ret[i] = right[i];
+	}
+	return ret;
+}
+
+glm::quat EulToQuat(float eul[]) {
+	double cr = cos(eul[0] * 0.5);
+	double sr = sin(eul[0] * 0.5);
+	double cp = cos(eul[1] * 0.5);
+	double sp = sin(eul[1] * 0.5);
+	double cy = cos(eul[2] * 0.5);
+	double sy = sin(eul[2] * 0.5);
+
+	glm::quat q;
+	q.w = cr * cp * cy + sr * sp * sy;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+
+	return q;
+}
+
+float Lerp(float A, float B, float time) {
+	return A + (B - A) * time;
+}
+
+glm::quat SLerp(glm::quat A, glm::quat B, float time) {
+
+	glm::quat An = glm::normalize(A);
+	glm::quat Bn = glm::normalize(B);
+
+	float dot = glm::dot(An, Bn);
+
+	if (dot > 1.0f) dot = 1.0f;
+	if (dot < 1.0f) dot = 1.0f;
+
+	float angle = glm::acos(dot);
+	float sinAng = glm::sin(angle);
+
+	bool lerp = false;
+	if (sinAng < 0.0001f) {
+		lerp = true;
+	}
+
+	if (lerp) {
+		glm::quat ret = An + (Bn - An) * time;
+		return glm::normalize(ret);
+	}
+	else {
+		float tI = glm::sin((1.0f - time) * angle) / sinAng;
+		float tN = glm::sin(time * angle) / sinAng;
+		glm::quat ret = tI * An + tN * Bn;
+		return glm::normalize(ret);
+	}
+
+}
+
+glm::vec3 VecLerp(glm::vec3 left, glm::vec3 right, float time) {
+	glm::vec3 ret;
+	for (int i = 0; i < 3; i++) {
+		ret[i] = Lerp(left[i], right[i], time);
+	}
+	return ret;
+}
+
+glm::vec3 SplinePosLerp(Spline input, float time) {
+	glm::vec3 ret;
+	glm::vec3 a;
+	glm::vec3 b;
+	glm::vec3 c;
+	glm::vec3 d;
+	glm::vec3 e;
+	a = VecLerp(VecFy(input.controls[0].pos), VecFy(input.controls[1].pos), time);
+	b = VecLerp(VecFy(input.controls[1].pos), VecFy(input.controls[2].pos), time);
+	c = VecLerp(VecFy(input.controls[2].pos), VecFy(input.controls[3].pos), time);
+	d = VecLerp(a, b, time);
+	e = VecLerp(b, c, time);
+	ret = VecLerp(d, e, time);
+	return ret;
+}
+
+glm::vec3 SplineScaLerp(Spline input, float time) {
+	glm::vec3 ret;
+	glm::vec3 a;
+	glm::vec3 b;
+	glm::vec3 c;
+	glm::vec3 d;
+	glm::vec3 e;
+	a = VecLerp(VecFy(input.controls[0].sca), VecFy(input.controls[1].sca), time);
+	b = VecLerp(VecFy(input.controls[1].sca), VecFy(input.controls[2].sca), time);
+	c = VecLerp(VecFy(input.controls[2].sca), VecFy(input.controls[3].sca), time);
+	d = VecLerp(a, b, time);
+	e = VecLerp(b, c, time);
+	ret = VecLerp(d, e, time);
+	return ret;
+}
+
+glm::quat SplineSLerp(Spline input, float time) {
+	glm::quat ret;
+	glm::quat a;
+	glm::quat b;
+	glm::quat c;
+	glm::quat d;
+	glm::quat e;
+	a = SLerp(EulToQuat(input.controls[0].rot), EulToQuat(input.controls[1].rot), time);
+	b = SLerp(EulToQuat(input.controls[1].rot), EulToQuat(input.controls[2].rot), time);
+	c = SLerp(EulToQuat(input.controls[2].rot), EulToQuat(input.controls[3].rot), time);
+	d = SLerp(a, b, time);
+	e = SLerp(b, c, time);
+	ret = SLerp(d, e, time);
+	return ret;
+}
+
+void drawSpline(Spline& input) {
+	unsigned int quadVAO, quadVBO;
+	glGenVertexArrays(1, &quadVAO);
+	glGenBuffers(1, &quadVBO);
+	glBindVertexArray(quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	for (int i = 0; i < 50; i++) {
+		glm::vec3 one = SplinePosLerp(input, i / 50.0f);
+		glm::vec3 two = SplinePosLerp(input, (i + 1) / 50.0f);
+		float quadVertices[] = { // current spline display.
+			// positions         // texCoords
+			one.x, one.y, one.z, 1.0f, 0.0f, 0.0f,
+			two.x, two.y, two.z, 1.0f, 0.0f, 0.0f
+		};
+		glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+		glBindVertexArray(quadVAO);
+		glDrawArrays(GL_LINES, 0, 2);
+	}
+}
+
+//This code is a slightly reformatted version of a function written at https://gamedev.stackexchange.com/questions/28395/rotating-vector3-by-a-quaternion
+//Credit to stackoverflow.com user Laurent Couvidou, who has saved me a lot of time making this happen.
+glm::vec3 RotateVec3(glm::vec3 input, glm::quat rotate) {
+	glm::vec3 ret;
+
+	// Extract the vector part of the quaternion
+	glm::quat rotNorm = glm::normalize(rotate);
+	glm::vec3 rotVec = glm::vec3(rotNorm.x, rotNorm.y, rotNorm.z);
+
+	// Extract the scalar part of the quaternion
+	float s = rotate.w;
+
+	// Do the math
+	ret = 2.0f * glm::dot(rotVec, input) * rotVec + (s * s - glm::dot(rotVec, rotVec)) * input + 2.0f * s * glm::cross(rotVec, input);
+
+	return ret;
+}
+
+void UpdateSpline(int index) {
+	if (index > 0) {
+		for (int i = 0; i < 3; i++) {
+			splines[index]->controls[0].pos[i] = splines[index - 1]->controls[3].pos[i];
+			splines[index]->controls[0].rot[i] = splines[index - 1]->controls[3].rot[i];
+			splines[index]->controls[0].sca[i] = splines[index - 1]->controls[3].sca[i];
+			splines[index]->startSize = splines[index - 1]->endSize;
+		}
+	}
+	glm::vec3 c1fk1 = glm::vec3(1.0f, 0.0f, 0.0f);
+	c1fk1 = c1fk1 * splines[index]->startSize;
+	c1fk1 = RotateVec3(c1fk1, EulToQuat(splines[index]->controls[0].rot));
+	glm::vec3 c2fk2 = glm::vec3(-1.0f, 0.0f, 0.0f);
+	c2fk2 = c2fk2 * splines[index]->endSize;
+	c2fk2 = RotateVec3(c2fk2, EulToQuat(splines[index]->controls[3].rot));
+	for (int i = 0; i < 3; i++) {
+		splines[index]->controls[1].pos[i] = splines[index]->controls[0].pos[i] + c1fk1[i];
+		splines[index]->controls[2].pos[i] = splines[index]->controls[3].pos[i] + c2fk2[i];
+	}
+}
+
+void CreateSpline() {
+	splines.push_back(new Spline());
+	int curr = splines.size() - 1;
+	if (splines.size() > 1) {
+		splines[curr]->controls[0].pos[0] = splines[curr - 1]->controls[3].pos[0];
+		splines[curr]->controls[0].pos[1] = splines[curr - 1]->controls[3].pos[1];
+		splines[curr]->controls[0].pos[2] = splines[curr - 1]->controls[3].pos[2];
+	}
+	splines[curr]->controls[1].pos[0] = splines[curr]->controls[0].pos[0] + 1.0f;
+	splines[curr]->controls[1].pos[1] = splines[curr]->controls[0].pos[1];
+	splines[curr]->controls[1].pos[2] = splines[curr]->controls[0].pos[2];
+	splines[curr]->controls[3].pos[0] = splines[curr]->controls[0].pos[0] + 3.0f;
+	splines[curr]->controls[3].pos[1] = splines[curr]->controls[0].pos[1] + 3.0f;
+	splines[curr]->controls[3].pos[2] = splines[curr]->controls[0].pos[2] + 3.0f;
+	splines[curr]->controls[2].pos[0] = splines[curr]->controls[3].pos[0] - 1.0f;
+	splines[curr]->controls[2].pos[1] = splines[curr]->controls[3].pos[1];
+	splines[curr]->controls[2].pos[2] = splines[curr]->controls[3].pos[2];
+}
 
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
@@ -79,6 +277,7 @@ int main() {
 	ew::Transform planeTrans;
 	ew::Transform lightTrans;
 	ew::Transform pointsTrans;
+	ew::Transform linesTrans;
 	GLuint ornamentTexture = ew::loadTexture("assets/ornament_color.png");
 
 	cam.position = glm::vec3(0.0f, 0.0f, 5.0f);
@@ -129,10 +328,7 @@ int main() {
 
 	glBindTextureUnit(0, ornamentTexture);
 
-	splines.push_back(Spline());
-	splines[0].controls[1].pos = glm::vec3(1.0f);
-	splines[0].controls[2].pos = glm::vec3(2.0f, -2.0f, 0.0f);
-	splines[0].controls[3].pos = glm::vec3(3.0f);
+	CreateSpline();
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -145,7 +341,13 @@ int main() {
 		camCon.move(window, &cam, deltaTime);
 		shader.setVec3("_EyePos", cam.position);
 
-		monkeyTrans.rotation = glm::rotate(monkeyTrans.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+		for (int i = 0; i < splines.size(); i++) {
+			if (timeExposure > (float)i && timeExposure < (i + 1.0f)) {
+				monkeyTrans.position = SplinePosLerp(*splines[i], timeExposure - (float)i);
+				monkeyTrans.rotation = SplineSLerp(*splines[i], timeExposure - (float)i);
+				monkeyTrans.scale = SplineScaLerp(*splines[i], timeExposure - (float)i);
+			}
+		}
 
 		float time = (float)glfwGetTime();
 		deltaTime = time - prevFrameTime;
@@ -172,17 +374,21 @@ int main() {
 		shadow.setMat4("_Model", planeTrans.modelMatrix());
 		plane.draw();
 
-		pointsTrans.position = splines[0].controls[0].pos;
+		pointsTrans.position = VecFy(splines[0]->controls[0].pos);
+		pointsTrans.rotation = EulToQuat(splines[0]->controls[0].rot);
 		shadow.setMat4("_Model", pointsTrans.modelMatrix());
 		splinePoint.draw();
 		for (int i = 0; i < splines.size(); i++) {
-			pointsTrans.position = splines[i].controls[1].pos;
+			pointsTrans.position = VecFy(splines[i]->controls[1].pos);
+			pointsTrans.rotation = EulToQuat(splines[i]->controls[1].rot);
 			shadow.setMat4("_Model", pointsTrans.modelMatrix());
 			pointLight.draw();
-			pointsTrans.position = splines[i].controls[2].pos;
+			pointsTrans.position = VecFy(splines[i]->controls[2].pos);
+			pointsTrans.rotation = EulToQuat(splines[i]->controls[2].rot);
 			shadow.setMat4("_Model", pointsTrans.modelMatrix());
 			pointLight.draw();
-			pointsTrans.position = splines[i].controls[3].pos;
+			pointsTrans.position = VecFy(splines[i]->controls[3].pos);
+			pointsTrans.rotation = EulToQuat(splines[i]->controls[3].rot);
 			shadow.setMat4("_Model", pointsTrans.modelMatrix());
 			splinePoint.draw();
 		}
@@ -192,9 +398,10 @@ int main() {
 
 		if (shadowToggle)
 		{
+			glBindTextureUnit(0, depthMap);
 			glBindTextureUnit(1, depthMap);
 			shaded.use();
-			shaded.setMat4("_Model", monkeyTrans.modelMatrix());
+			shaded.setMat4("_Model", planeTrans.modelMatrix());
 			shaded.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
 			shaded.setFloat("_Material.Ka", material.Ka);
 			shaded.setFloat("_Material.Kd", material.Kd);
@@ -207,63 +414,89 @@ int main() {
 			shaded.setFloat("_MinBias", minBias);
 			shaded.setFloat("_MaxBias", maxBias);
 			shaded.setInt("_PCFSamplesSqrRt", pcfSampleInt);
-			monkey.draw();
-
-			shaded.setMat4("_Model", planeTrans.modelMatrix());
 			plane.draw();
+
+			glBindTextureUnit(0, ornamentTexture);
+			shaded.setMat4("_Model", monkeyTrans.modelMatrix());
+			monkey.draw();
 
 			shaded.setMat4("_Model", lightTrans.modelMatrix());
 			pointLight.draw();
 
-			pointsTrans.position = splines[0].controls[0].pos;
+			pointsTrans.position = VecFy(splines[0]->controls[0].pos);
+			pointsTrans.rotation = EulToQuat(splines[0]->controls[0].rot);
 			shaded.setMat4("_Model", pointsTrans.modelMatrix());
 			splinePoint.draw();
 			for (int i = 0; i < splines.size(); i++) {
-				pointsTrans.position = splines[i].controls[1].pos;
+				pointsTrans.position = VecFy(splines[i]->controls[1].pos);
+				pointsTrans.rotation = EulToQuat(splines[i]->controls[1].rot);
 				shaded.setMat4("_Model", pointsTrans.modelMatrix());
 				pointLight.draw();
-				pointsTrans.position = splines[i].controls[2].pos;
+				pointsTrans.position = VecFy(splines[i]->controls[2].pos);
+				pointsTrans.rotation = EulToQuat(splines[i]->controls[2].rot);
 				shaded.setMat4("_Model", pointsTrans.modelMatrix());
 				pointLight.draw();
-				pointsTrans.position = splines[i].controls[3].pos;
+				pointsTrans.position = VecFy(splines[i]->controls[3].pos);
+				pointsTrans.rotation = EulToQuat(splines[i]->controls[3].rot);
 				shaded.setMat4("_Model", pointsTrans.modelMatrix());
 				splinePoint.draw();
+				shaded.setMat4("_Model", linesTrans.modelMatrix());
+				drawSpline(*splines[i]);
 			}
 		}
 		else
 		{
+			glBindTextureUnit(0, depthMap);
 			shader.use();
-			shader.setMat4("_Model", monkeyTrans.modelMatrix());
+			shader.setMat4("_Model", planeTrans.modelMatrix());
 			shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
 			shader.setFloat("_Material.Ka", material.Ka);
 			shader.setFloat("_Material.Kd", material.Kd);
 			shader.setFloat("_Material.Ks", material.Ks);
 			shader.setFloat("_Material.Shininess", material.Shiny);
-			monkey.draw();
-
-			shader.setMat4("_Model", planeTrans.modelMatrix());
 			plane.draw();
+
+			glBindTextureUnit(0, ornamentTexture);
+			shader.setMat4("_Model", monkeyTrans.modelMatrix());
+			monkey.draw();
 
 			shader.setMat4("_Model", lightTrans.modelMatrix());
 			pointLight.draw();
 
-			pointsTrans.position = splines[0].controls[0].pos;
-			shader.setMat4("_Model", pointsTrans.modelMatrix());
+
+			pointsTrans.position = VecFy(splines[0]->controls[0].pos);
+			pointsTrans.rotation = EulToQuat(splines[0]->controls[0].rot);
+			shaded.setMat4("_Model", pointsTrans.modelMatrix());
 			splinePoint.draw();
 			for (int i = 0; i < splines.size(); i++) {
-				pointsTrans.position = splines[i].controls[1].pos;
-				shader.setMat4("_Model", pointsTrans.modelMatrix());
+				pointsTrans.position = VecFy(splines[i]->controls[1].pos);
+				pointsTrans.rotation = EulToQuat(splines[i]->controls[1].rot);
+				shaded.setMat4("_Model", pointsTrans.modelMatrix());
 				pointLight.draw();
-				pointsTrans.position = splines[i].controls[2].pos;
-				shader.setMat4("_Model", pointsTrans.modelMatrix());
+				pointsTrans.position = VecFy(splines[i]->controls[2].pos);
+				pointsTrans.rotation = EulToQuat(splines[i]->controls[2].rot);
+				shaded.setMat4("_Model", pointsTrans.modelMatrix());
 				pointLight.draw();
-				pointsTrans.position = splines[i].controls[3].pos;
-				shader.setMat4("_Model", pointsTrans.modelMatrix());
+				pointsTrans.position = VecFy(splines[i]->controls[3].pos);
+				pointsTrans.rotation = EulToQuat(splines[i]->controls[3].rot);
+				shaded.setMat4("_Model", pointsTrans.modelMatrix());
 				splinePoint.draw();
+				shaded.setMat4("_Model", linesTrans.modelMatrix());
+				drawSpline(*splines[i]);
 			}
 		}
 
 		drawUI();
+
+		timeExposure += deltaTime * splines.size();
+
+		if (timeExposure > splines.size() * 1.0f) {
+			timeExposure = 0.0f;
+		}
+
+		for (int i = 0; i < splines.size(); i++) {
+			UpdateSpline(i);
+		}
 
 		glfwSwapBuffers(window);
 	}
@@ -305,6 +538,48 @@ void drawUI() {
 	if (ImGui::Button("Toggle Shadows")) {
 		if (shadowToggle) shadowToggle = false;
 		else shadowToggle = true;
+	}
+	if (ImGui::CollapsingHeader("Splines")) {
+		for (int i = 0; i < splines.size(); i++) {
+			std::string header = std::string("Spline " + std::to_string(i));
+			if (ImGui::CollapsingHeader(header.c_str())) {
+				if (i == 0) {
+					if (ImGui::CollapsingHeader("Start Point")) {
+						ImGui::DragFloat3("Position", splines[0]->controls[0].pos, 0.1f, -10.0f, 10.0f);
+						ImGui::DragFloat3("Rotation", splines[0]->controls[0].rot, 0.1f, -10.0f, 10.0f);
+						ImGui::DragFloat3("Scale", splines[0]->controls[0].sca, 0.1f, -10.0f, 10.0f);
+						ImGui::DragFloat("Knot Size", &splines[0]->startSize, 0.05f, 0.1f, 5.0f);
+					}
+				}
+				std::string one = std::string(std::to_string(i) + ": Sub 1");
+				if (ImGui::CollapsingHeader(one.c_str())) {
+					ImGui::DragFloat3("End: Rotation", splines[i]->controls[1].rot, 0.1f, -10.0f, 10.0f);
+					ImGui::DragFloat3("End: Scale", splines[i]->controls[1].sca, 0.1f, -10.0f, 10.0f);
+				}
+				std::string two = std::string(std::to_string(i) + ": Sub 2");
+				if (ImGui::CollapsingHeader(two.c_str())) {
+					ImGui::DragFloat3("End: Rotation", splines[i]->controls[2].rot, 0.1f, -10.0f, 10.0f);
+					ImGui::DragFloat3("End: Scale", splines[i]->controls[2].sca, 0.1f, -10.0f, 10.0f);
+				}
+				std::string three = std::string(std::to_string(i) + ": End Point");
+				if (ImGui::CollapsingHeader(three.c_str())) {
+					ImGui::DragFloat3("End: Position", splines[i]->controls[3].pos, 0.1f, -10.0f, 10.0f);
+					ImGui::DragFloat3("End: Rotation", splines[i]->controls[3].rot, 0.1f, -10.0f, 10.0f);
+					ImGui::DragFloat3("End: Scale", splines[i]->controls[3].sca, 0.1f, -10.0f, 10.0f);
+					ImGui::DragFloat("End: Knot Size", &splines[i]->endSize, 0.05f, 0.1f, 5.0f);
+				}
+			}
+		}
+		if (ImGui::Button("Add Spline")) {
+			CreateSpline();
+		}
+		if (ImGui::Button("Remove Spline")) {
+			if (splines.size() > 1) {
+				delete splines.back();
+				splines.back() = nullptr;
+				splines.pop_back();
+			}
+		}
 	}
 
 	ImGui::End();
