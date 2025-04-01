@@ -93,7 +93,62 @@ struct ExposureTransform {
 	float pos[3];
 	float rot[3];
 	float sca[3];
+	ExposureTransform* parent;
 };
+
+std::vector<ExposureTransform*> transforms;
+
+void addTransform(glm::vec3 pos, glm::vec3 rot, glm::vec3 sca, int parentIndex) {
+	ExposureTransform* ret = new ExposureTransform;
+	for (int i = 0; i < 3; i++) {
+		ret->pos[i] = pos[i];
+		ret->rot[i] = rot[i];
+		ret->sca[i] = sca[i];
+	}
+	if (parentIndex == -1) {
+		ret->parent = nullptr;
+	}
+	else {
+		ret->parent = transforms[parentIndex];
+	}
+	transforms.push_back(ret);
+}
+
+glm::vec3 localPos(ExposureTransform* input) {
+	glm::vec3 ret;
+	if (input->parent != nullptr) {
+		ret = VecFy(input->parent->pos);
+		ret += RotateVec3(VecFy(input->pos), EulToQuat(input->parent->rot));
+	}
+	else {
+		ret = VecFy(input->pos);
+	}
+	return ret;
+}
+
+glm::quat localRot(ExposureTransform* input) {
+	glm::quat ret;
+	if (input->parent != nullptr) {
+		ret = EulToQuat(input->parent->rot);
+		ret += EulToQuat(input->rot);
+	}
+	else {
+		ret = EulToQuat(input->rot);
+	}
+	return ret;
+}
+
+glm::vec3 localSca(ExposureTransform* input) {
+	glm::vec3 ret;
+	if (input->parent != nullptr) {
+		ret = VecFy(input->parent->sca);
+		ret *= VecFy(input->sca);
+	}
+	else {
+		ret = VecFy(input->sca);
+	}
+	return ret;
+}
 
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
@@ -159,6 +214,15 @@ int main() {
 
 	glBindTextureUnit(0, ornamentTexture);
 
+	addTransform(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f), -1);
+	addTransform(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 0);
+	addTransform(glm::vec3(2.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 1);
+	addTransform(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 2);
+	addTransform(glm::vec3(4.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 3);
+	addTransform(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 0);
+	addTransform(glm::vec3(0.0f, -2.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 5);
+	addTransform(glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f), glm::vec3(0.8f), 0);
+
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
@@ -169,8 +233,6 @@ int main() {
 		cam.aspectRatio = (float)screenWidth / screenHeight;
 		camCon.move(window, &cam, deltaTime);
 		shader.setVec3("_EyePos", cam.position);
-
-		monkeyTrans.rotation = glm::rotate(monkeyTrans.rotation, deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
 
 		float time = (float)glfwGetTime();
 		deltaTime = time - prevFrameTime;
@@ -185,13 +247,18 @@ int main() {
 
 		glCullFace(GL_FRONT);
 		shadow.use();
-		shadow.setMat4("_Model", monkeyTrans.modelMatrix());
 		shadow.setMat4("_ViewProjection", light.projectionMatrix() * light.viewMatrix());
 		shadow.setFloat("_Material.Ka", material.Ka);
 		shadow.setFloat("_Material.Kd", material.Kd);
 		shadow.setFloat("_Material.Ks", material.Ks);
 		shadow.setFloat("_Material.Shininess", material.Shiny);
-		monkey.draw();
+		for (int i = 0; i < transforms.size(); i++) {
+			monkeyTrans.position = localPos(transforms[i]);
+			monkeyTrans.rotation = localRot(transforms[i]);
+			monkeyTrans.scale = localSca(transforms[i]);
+			shadow.setMat4("_Model", monkeyTrans.modelMatrix());
+			monkey.draw();
+		}
 
 		glCullFace(GL_BACK);
 		shadow.setMat4("_Model", planeTrans.modelMatrix());
@@ -204,7 +271,6 @@ int main() {
 		{
 			glBindTextureUnit(1, depthMap);
 			shaded.use();
-			shaded.setMat4("_Model", monkeyTrans.modelMatrix());
 			shaded.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
 			shaded.setFloat("_Material.Ka", material.Ka);
 			shaded.setFloat("_Material.Kd", material.Kd);
@@ -217,7 +283,13 @@ int main() {
 			shaded.setFloat("_MinBias", minBias);
 			shaded.setFloat("_MaxBias", maxBias);
 			shaded.setInt("_PCFSamplesSqrRt", pcfSampleInt);
-			monkey.draw();
+			for (int i = 0; i < transforms.size(); i++) {
+				monkeyTrans.position = localPos(transforms[i]);
+				monkeyTrans.rotation = localRot(transforms[i]);
+				monkeyTrans.scale = localSca(transforms[i]);
+				shaded.setMat4("_Model", monkeyTrans.modelMatrix());
+				monkey.draw();
+			}
 
 			shaded.setMat4("_Model", planeTrans.modelMatrix());
 			plane.draw();
@@ -228,13 +300,18 @@ int main() {
 		else
 		{
 			shader.use();
-			shader.setMat4("_Model", monkeyTrans.modelMatrix());
 			shader.setMat4("_ViewProjection", cam.projectionMatrix() * cam.viewMatrix());
 			shader.setFloat("_Material.Ka", material.Ka);
 			shader.setFloat("_Material.Kd", material.Kd);
 			shader.setFloat("_Material.Ks", material.Ks);
 			shader.setFloat("_Material.Shininess", material.Shiny);
-			monkey.draw();
+			for (int i = 0; i < transforms.size(); i++) {
+				monkeyTrans.position = localPos(transforms[i]);
+				monkeyTrans.rotation = localRot(transforms[i]);
+				monkeyTrans.scale = localSca(transforms[i]);
+				shader.setMat4("_Model", monkeyTrans.modelMatrix());
+				monkey.draw();
+			}
 
 			shader.setMat4("_Model", planeTrans.modelMatrix());
 			plane.draw();
