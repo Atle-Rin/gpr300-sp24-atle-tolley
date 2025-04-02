@@ -114,23 +114,11 @@ void addTransform(glm::vec3 pos, glm::vec3 rot, glm::vec3 sca, int parentIndex) 
 	transforms.push_back(ret);
 }
 
-glm::vec3 localPos(ExposureTransform* input) {
-	glm::vec3 ret;
-	if (input->parent != nullptr) {
-		ret = VecFy(input->parent->pos);
-		ret += RotateVec3(VecFy(input->pos), EulToQuat(input->parent->rot));
-	}
-	else {
-		ret = VecFy(input->pos);
-	}
-	return ret;
-}
-
 glm::quat localRot(ExposureTransform* input) {
 	glm::quat ret;
 	if (input->parent != nullptr) {
-		ret = EulToQuat(input->parent->rot);
-		ret += EulToQuat(input->rot);
+		ret = localRot(input->parent);
+		ret *= EulToQuat(input->rot);
 	}
 	else {
 		ret = EulToQuat(input->rot);
@@ -138,10 +126,22 @@ glm::quat localRot(ExposureTransform* input) {
 	return ret;
 }
 
+glm::vec3 localPos(ExposureTransform* input) {
+	glm::vec3 ret;
+	if (input->parent != nullptr) {
+		ret = localPos(input->parent);
+		ret += RotateVec3(VecFy(input->pos), localRot(input));
+	}
+	else {
+		ret = VecFy(input->pos);
+	}
+	return ret;
+}
+
 glm::vec3 localSca(ExposureTransform* input) {
 	glm::vec3 ret;
 	if (input->parent != nullptr) {
-		ret = VecFy(input->parent->sca);
+		ret = localSca(input->parent);
 		ret *= VecFy(input->sca);
 	}
 	else {
@@ -149,6 +149,10 @@ glm::vec3 localSca(ExposureTransform* input) {
 	}
 	return ret;
 }
+
+int selectedPart = 0;
+
+char** selectorParts;
 
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
@@ -179,6 +183,18 @@ int main() {
 	light.orthographic = true;
 	light.orthoHeight = 10.0f;
 	
+	selectorParts = new char* [8];
+	for (int i = 0; i < 4; i++) {
+		selectorParts[i] = new char[8];
+	}
+	selectorParts[0] = "Body";
+	selectorParts[1] = "Shoulder";
+	selectorParts[2] = "Elbow";
+	selectorParts[3] = "Wrist";
+	selectorParts[4] = "Hand";
+	selectorParts[5] = "Thigh";
+	selectorParts[6] = "Calf";
+	selectorParts[7] = "Back-head";
 
 	lightTrans.position = glm::vec3(-5.0f, 10.0f, -3.0f);
 
@@ -216,11 +232,11 @@ int main() {
 
 	addTransform(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f), -1);
 	addTransform(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 0);
-	addTransform(glm::vec3(2.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 1);
-	addTransform(glm::vec3(3.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 2);
-	addTransform(glm::vec3(4.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 3);
+	addTransform(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 1);
+	addTransform(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 2);
+	addTransform(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 3);
 	addTransform(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 0);
-	addTransform(glm::vec3(0.0f, -2.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 5);
+	addTransform(glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f), glm::vec3(0.8f), 5);
 	addTransform(glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f), glm::vec3(0.8f), 0);
 
 	while (!glfwWindowShouldClose(window)) {
@@ -338,6 +354,18 @@ void drawUI() {
 	ImGui_ImplGlfw_NewFrame();
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui::NewFrame();
+
+	ImGui::Begin("Skeleton");
+	ImGui::ListBox("Select Part:", &selectedPart, selectorParts, 8);
+	ImGui::End();
+
+	ImGui::Begin("Inspector");
+	if (ImGui::CollapsingHeader(selectorParts[selectedPart])) {
+		ImGui::DragFloat3("Position", transforms[selectedPart]->pos, 0.1f, -10.0f, 10.0f);
+		ImGui::DragFloat3("Rotation", transforms[selectedPart]->rot, 0.1f, -10.0f, 10.0f);
+		ImGui::DragFloat3("Scale", transforms[selectedPart]->sca, 0.1f, -10.0f, 10.0f);
+	}
+	ImGui::End();
 
 	ImGui::Begin("Settings");
 	if (ImGui::Button("Reset Camera")) {
