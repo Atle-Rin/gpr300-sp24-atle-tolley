@@ -130,7 +130,7 @@ glm::vec3 localPos(ExposureTransform* input) {
 	glm::vec3 ret;
 	if (input->parent != nullptr) {
 		ret = localPos(input->parent);
-		ret += RotateVec3(VecFy(input->pos), localRot(input));
+		ret += RotateVec3(VecFy(input->pos), localRot(input->parent));
 	}
 	else {
 		ret = VecFy(input->pos);
